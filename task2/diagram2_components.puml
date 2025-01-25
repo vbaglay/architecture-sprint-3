@@ -1,0 +1,114 @@
+@startuml
+!define C4Component
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+ContainerDb(devicesDb, "DeviceManagamentDb", "PostgreSQL", "База данных устройств")
+Container_Boundary(deviceManagement, "Сервис управления устройствами") {
+    Component(regDevice, "Контроллер регистрации устройств")
+    Component(activationDevice, "Контроллер активации устройств")
+    Component(deviceService, "Service layer", "Bussiness logic")
+    Component(repoDevice, "Repository layer", "Data access logic")
+
+    ComponentQueue(devicekafka,"Kafka")
+
+    Rel(regDevice, deviceService, "Uses")
+    Rel(activationDevice, deviceService, "Uses")
+    Rel(deviceService, repoDevice, "Uses")
+    Rel(deviceService, devicekafka, "Publish")
+    Rel(repoDevice, devicesDb, "Read/Write")
+}
+
+ContainerDb(monitoringDb, "База данных мониторинга", "InfluxDB", "База данных телеметрии")
+Container(metrics, "Prometheus и Grafana")
+
+System_Ext(monitorDeviceServices,  "HeatService, GateControl, LightControl, etc..")
+Container(mkafka,"Kafka", "IOT Hub, шина куда все девайсы шлют телеметрию")
+Container_Boundary(monitor, "Сервис мониторинга") {
+    Component(reportController, "Device reports controller","Телеметрия подключенных устройств.")
+    Component(consumer, "EventsConsumer","Вычитывает из шины и раскладывает в БД для процессинга")
+    Component(analisys, "Analitycal Engine","Процессинг отчетов")
+    Component(repository, "Repository layer", "Data access logic")
+    'ComponentQueue(mkafka,"Kafka")
+
+    Rel(analisys, metrics, "Sends telemetry")
+    Rel(reportController, analisys, "Uses")
+    Rel(analisys, repository, "Uses")
+    Rel(consumer, repository, "Read/Write")
+    Rel(consumer, mkafka, "Subscribes")
+    Rel(repository, monitoringDb, "Read/Write")
+}
+
+
+System_Ext(scenDeviceServices, "HeatService, GateControl, LightControl, etc..")
+ContainerDb(scenariosDb, "База данных сценариев", "MongoDB", "Хранит пользовательские сценарии и правила автоматизации.")
+Container_Boundary(scenario, "Сервис сценариев") {
+    Component(scenarioController, "Scenario controller","Создание сценариев")
+    Component(schedulerController, "Sheduler controller","Планировщик")
+    Component(appLogic, "Application layer","Слой бизнес-логики")
+    Component(worker,"BackgroundWorker", "Обработчик сценариев")
+    Component(repoScen, "Repository layer", "Data access logic")
+
+    Rel(scenarioController, appLogic, "Uses")
+    Rel(schedulerController, appLogic, "Uses")
+    Rel(appLogic, repoScen, "Read/Write")
+    Rel(worker, repoScen, "Read/Write")
+    Rel(repoScen, scenariosDb, "Read/Write")
+}
+Rel(scenario, scenDeviceServices, "Send command","http")
+
+ContainerDb(userDb, "База данных пользователей", "PostgreSQL")
+Container(identity, "IdentityServer")
+Container_Boundary(auth,"Сервис аутентификации") {
+    Component(userRegistration, "Контроллер регистрации")
+    Component(authController, "Контроллер авторизации")
+    Component(authServiceLayer, "Service layer", "Bussiness logic")
+    Component(userRepository, "Repository layer", "Data access logic")
+
+    Rel(userRegistration, authServiceLayer, "Uses")
+    Rel(authController, authServiceLayer, "Uses")
+    Rel(authServiceLayer, identity, "Uses")
+    Rel(authServiceLayer, userRepository, "Uses")
+    Rel(userRepository, userDb, "Read/Write")
+}
+
+System_Ext(heatDevice, "Умная реле отопления")
+Container_Boundary(heatingService, "Управление отоплением") {
+    Component(heatController, "Контроллер устройств отопления")
+    Component(protocolTranslator, "Протокол передачи")
+    Component(CommandHandler, "Обработчик команд")
+
+    Rel(heatController, CommandHandler, "Uses")
+    Rel(CommandHandler, protocolTranslator, "Uses")
+    Rel(protocolTranslator, heatDevice,"Send command","mqtt")
+}
+
+Container_Boundary(CameraStreamingService, "Сервис потокового видео с камер") {
+    Component(apiController, "Streaming API Controller")
+    Component(cameraStreamManager, "Camera Stream Manager", "Node.js", "Управление потоком видео с камер.")
+    Component(cameraConnector, "Camera Connector", "Node.js", "Управление коммуникацией с камерами по протоколам (RTSP/WebRTC).")
+    Rel(apiController, cameraStreamManager, "On/Off", "HTTP")
+    Rel(cameraStreamManager, cameraConnector, "Конекты", "RTSP/WebRTC")
+}
+
+System_Ext(light, "Умная лампочка")
+Container_Boundary(lightingControl, "Сервис управления освещением","Go") {
+    Component(lightController, "Контроллер АПИ для работы с освещением")
+    Component(lightProtocolTranslator, "Протокол передачи")
+    Component(lightCommandHandler, "Обработчик команд")
+    Rel(lightController, lightCommandHandler, "Uses")
+    Rel(lightCommandHandler, lightProtocolTranslator, "Uses")
+    Rel(lightProtocolTranslator, light, "Send command","mqtt")
+}
+
+System_Ext(gateDevice, "Устройство умных ворот")
+Container_Boundary(gateControl, "Сервис управления воротами", "Rust", "Управление воротами.") {
+    Component(gateController, "Контроллер АПИ для работы с воротами")
+    Component(gateProtocolTranslator, "Протокол передачи")
+    Component(gateCommandHandler, "Обработчик команд")
+    Rel(gateController, gateCommandHandler, "Uses")
+    Rel(gateCommandHandler, gateProtocolTranslator, "Uses")
+    Rel(gateProtocolTranslator, gateDevice, "Send command","mqtt")
+}
+
+@enduml
+
